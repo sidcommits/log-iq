@@ -1,0 +1,55 @@
+sources:
+  - name: loki
+    type: loki
+    url: http://loki:3100
+    mode: stream            # poll | stream
+    poll_interval_seconds: 30
+
+database:
+  url: ${POSTGRES_URL}
+
+qdrant:
+  host: qdrant
+  port: 6333
+  collection: logiq_logs
+
+embeddings:
+  provider: openai
+  model: text-embedding-3-small
+  api_key: ${OPENAI_API_KEY}
+
+llm:
+  provider: claude          # claude | openai | openrouter
+  model: claude-sonnet-4-20250514
+  api_key: ${ANTHROPIC_API_KEY}
+  timeout_seconds: 30
+  openrouter:
+    api_key: ${OPENROUTER_API_KEY}
+    base_url: https://openrouter.ai/api/v1
+    model: anthropic/claude-sonnet-4
+
+ingestion:
+  batch_size: 100
+  max_chunk_tokens: 512
+
+anomaly:
+  enabled: true
+  knn_k: 10
+  threshold: 0.72
+  per_service_overrides: {}
+
+auth:
+  enabled: false            # set true in production
+  api_key: ${LOGIQ_API_KEY}
+
+integrations:
+  github:
+    enabled: false          # v2.0 placeholder
+  slack:
+    enabled: false          # v1.1 placeholder
+
+agents:
+  enabled: false            # v2.0 placeholder
+  require_human_approval: true
+  confidence_threshold: 0.70
+  max_files_per_fix: 3
