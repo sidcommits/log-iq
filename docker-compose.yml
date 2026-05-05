@@ -1,0 +1,97 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: logiq
+      POSTGRES_USER: logiq
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-logiq}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logiq -d logiq"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "6333:6333"
+
+  loki:
+    image: grafana/loki:2.9.0
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./infra/loki/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "3100:3100"
+
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yaml"
+      - "--storage.tsdb.path=/prometheus"
+    volumes:
+      - ./infra/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yaml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./infra/grafana/datasources:/etc/grafana/provisioning/datasources
+      - ./infra/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+
+  logiq-api:
+    build: .
+    environment:
+      POSTGRES_URL: postgresql://logiq:${POSTGRES_PASSWORD:-logiq}@postgres:5432/logiq
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      LOGIQ_API_KEY: ${LOGIQ_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  log-generator:
+    build:
+      context: tools/log_generator
+    environment:
+      LOKI_URL: http://loki:3100
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  loki_data:
+  prometheus_data:
+  grafana_data:
