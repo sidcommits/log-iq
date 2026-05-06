@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
 
 import asyncpg
 
 from models.log_event import LogEvent, SeverityLevel
+from models.rca import RootCauseAnalysis
 
 _MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 _MIGRATION_SQL = "\n".join(
@@ -132,3 +134,65 @@ async def fetch_logs_by_text(pool: asyncpg.Pool, query: str, limit: int) -> list
             limit,
         )
     return [_row_to_log_event(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# RCA helpers
+# ---------------------------------------------------------------------------
+
+def _row_to_rca(row) -> RootCauseAnalysis:
+    return RootCauseAnalysis(
+        id=row["id"],
+        log_id=row["log_id"],
+        trace_id=row["trace_id"],
+        summary=row["summary"],
+        root_cause=row["root_cause"],
+        affected_services=list(row["affected_services"]),
+        confidence=row["confidence"],
+        suggested_fixes=list(row["suggested_fixes"]),
+        created_at=row["created_at"],
+    )
+
+
+async def insert_rca(pool: asyncpg.Pool, rca: RootCauseAnalysis) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO rca
+                (id, log_id, trace_id, summary, root_cause,
+                 affected_services, confidence, suggested_fixes, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8::jsonb, $9)
+            """,
+            rca.id, rca.log_id, rca.trace_id, rca.summary, rca.root_cause,
+            json.dumps(rca.affected_services), rca.confidence,
+            json.dumps(rca.suggested_fixes), rca.created_at,
+        )
+
+
+async def get_rca_by_log_ids(pool: asyncpg.Pool, log_ids: list[str]) -> list[RootCauseAnalysis]:
+    if not log_ids:
+        return []
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT * FROM rca WHERE log_id = ANY($1)", log_ids)
+    return [_row_to_rca(row) for row in rows]
+
+
+async def get_logs_by_trace_id(pool: asyncpg.Pool, trace_id: str, limit: int = 200) -> list[LogEvent]:
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM logs WHERE trace_id = $1 ORDER BY timestamp ASC LIMIT $2",
+            trace_id, limit,
+        )
+    return [_row_to_log_event(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# Audit log helper
+# ---------------------------------------------------------------------------
+
+async def append_audit_log(pool: asyncpg.Pool, event_type: str, payload: dict) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO audit_log (event_type, payload) VALUES ($1, $2::jsonb)",
+            event_type, json.dumps(payload),
+        )

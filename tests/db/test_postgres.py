@@ -223,3 +223,89 @@ async def test_fetch_unembedded_logs_deserialises_row_to_log_event():
     assert event.severity.value == "ERROR"
     assert event.service == "auth-service"
     assert event.timestamp == ts
+
+
+# ---------------------------------------------------------------------------
+# Task 2: RCA, Audit, Trace helpers
+# ---------------------------------------------------------------------------
+import json
+from unittest.mock import patch
+
+from models.rca import RootCauseAnalysis
+
+
+def _make_rca(**kwargs) -> RootCauseAnalysis:
+    defaults = dict(
+        log_id="log-001",
+        trace_id="trace-abc",
+        summary="Auth service failed",
+        root_cause="DB connection pool exhausted",
+        affected_services=["auth-service", "api-gateway"],
+        confidence=0.9,
+        suggested_fixes=["Increase pool size", "Add circuit breaker"],
+    )
+    return RootCauseAnalysis(**{**defaults, **kwargs})
+
+
+def _make_log_event(**kwargs) -> LogEvent:
+    defaults = dict(
+        id="log-001",
+        timestamp=datetime(2026, 5, 6, 10, 0, 0, tzinfo=timezone.utc),
+        severity=SeverityLevel.ERROR,
+        service="auth-service",
+        environment="production",
+        message="connection refused",
+        source="loki",
+        trace_id="trace-abc",
+    )
+    return LogEvent(**{**defaults, **kwargs})
+
+
+@pytest.mark.asyncio
+async def test_insert_rca_executes_insert():
+    from db.postgres import insert_rca
+    rca = _make_rca()
+    mock_conn = AsyncMock()
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_conn), __aexit__=AsyncMock(return_value=False)))
+
+    await insert_rca(mock_pool, rca)
+
+    mock_conn.execute.assert_called_once()
+    call_args = mock_conn.execute.call_args[0]
+    assert rca.id in call_args
+
+
+@pytest.mark.asyncio
+async def test_get_rca_by_log_ids_returns_empty_for_empty_input():
+    from db.postgres import get_rca_by_log_ids
+    result = await get_rca_by_log_ids(MagicMock(), [])
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_logs_by_trace_id_queries_correct_column():
+    from db.postgres import get_logs_by_trace_id
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(return_value=[])
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_conn), __aexit__=AsyncMock(return_value=False)))
+
+    result = await get_logs_by_trace_id(mock_pool, "trace-abc", limit=50)
+
+    assert result == []
+    call_sql = mock_conn.fetch.call_args[0][0]
+    assert "trace_id" in call_sql
+
+
+@pytest.mark.asyncio
+async def test_append_audit_log_inserts_event():
+    from db.postgres import append_audit_log
+    mock_conn = AsyncMock()
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_conn), __aexit__=AsyncMock(return_value=False)))
+
+    await append_audit_log(mock_pool, "rca_created", {"rca_id": "rca-001"})
+
+    mock_conn.execute.assert_called_once()
+    assert "rca_created" in mock_conn.execute.call_args[0]
