@@ -75,8 +75,26 @@ class LokiAdapter(BaseSourceAdapter):
                     continue
         return events
 
-    def stream_logs(self) -> AsyncIterator[LogEvent]:
-        raise NotImplementedError("implemented in Task 9")
+    async def stream_logs(self) -> AsyncIterator[LogEvent]:
+        ws_url = (
+            self._url
+            .replace("http://", "ws://")
+            .replace("https://", "wss://")
+        )
+        uri = f"{ws_url}/loki/api/v1/tail?query={quote(self._query)}"
+        async with websockets.connect(uri) as ws:
+            async for message in ws:
+                try:
+                    data = json.loads(message)
+                except json.JSONDecodeError:
+                    continue
+                for stream in data.get("streams", []):
+                    for _ts, log_line in stream.get("values", []):
+                        try:
+                            raw = json.loads(log_line)
+                            yield self.normalise(raw)
+                        except (json.JSONDecodeError, KeyError, ValueError):
+                            continue
 
     async def health_check(self) -> dict:
         try:

@@ -285,3 +285,14 @@ async def test_health_check_returns_error_on_connection_failure():
 
     assert result["status"] == "error"
     assert "refused" in result["detail"]
+
+
+# ── stream_logs ───────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_stream_logs_is_async_generator():
+    import inspect
+    adapter = LokiAdapter(url="http://loki:3100")
+    gen = adapter.stream_logs()
+    assert inspect.isasyncgen(gen)
+    await gen.aclose()
