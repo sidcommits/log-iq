@@ -1,10 +1,14 @@
 import pytest
+from pydantic import ValidationError
+
+from models.rca import RootCauseAnalysis
+from models.task import ActionableTask, TaskPriority, TaskStatus
+from models.anomaly import AnomalyResult
 
 
 # ── RootCauseAnalysis ──────────────────────────────────────────────────────────
 
 def test_rca_creation_with_required_fields():
-    from models.rca import RootCauseAnalysis
     rca = RootCauseAnalysis(
         log_id="log-abc",
         summary="DB connection pool exhausted",
@@ -19,25 +23,21 @@ def test_rca_creation_with_required_fields():
 
 
 def test_rca_id_auto_generated():
-    from models.rca import RootCauseAnalysis
     rca = RootCauseAnalysis(log_id="x", summary="s", root_cause="r", confidence=0.5)
     assert len(rca.id) == 36
 
 
 def test_rca_confidence_rejects_above_one():
-    from models.rca import RootCauseAnalysis
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         RootCauseAnalysis(log_id="x", summary="s", root_cause="r", confidence=1.5)
 
 
 def test_rca_confidence_rejects_below_zero():
-    from models.rca import RootCauseAnalysis
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         RootCauseAnalysis(log_id="x", summary="s", root_cause="r", confidence=-0.1)
 
 
 def test_rca_with_services_and_fixes():
-    from models.rca import RootCauseAnalysis
     rca = RootCauseAnalysis(
         log_id="log-1",
         summary="auth spike",
@@ -53,7 +53,6 @@ def test_rca_with_services_and_fixes():
 # ── ActionableTask ─────────────────────────────────────────────────────────────
 
 def test_task_creation_with_required_fields():
-    from models.task import ActionableTask, TaskStatus, TaskPriority
     task = ActionableTask(
         rca_id="rca-1",
         log_id="log-1",
@@ -67,7 +66,6 @@ def test_task_creation_with_required_fields():
 
 
 def test_task_status_transitions():
-    from models.task import ActionableTask, TaskStatus
     for status in ("pending", "approved", "in_progress", "resolved", "dismissed"):
         task = ActionableTask(
             rca_id="r", log_id="l", title="t", description="d",
@@ -77,7 +75,6 @@ def test_task_status_transitions():
 
 
 def test_task_priority_enum_values():
-    from models.task import ActionableTask, TaskPriority
     for priority in ("low", "medium", "high", "critical"):
         task = ActionableTask(
             rca_id="r", log_id="l", title="t", description="d",
@@ -87,7 +84,6 @@ def test_task_priority_enum_values():
 
 
 def test_task_id_auto_generated():
-    from models.task import ActionableTask
     task = ActionableTask(rca_id="r", log_id="l", title="t", description="d")
     assert len(task.id) == 36
 
@@ -95,7 +91,6 @@ def test_task_id_auto_generated():
 # ── AnomalyResult ──────────────────────────────────────────────────────────────
 
 def test_anomaly_creation():
-    from models.anomaly import AnomalyResult
     anomaly = AnomalyResult(log_id="log-1", score=0.45, is_anomaly=True, threshold=0.72)
     assert anomaly.score == 0.45
     assert anomaly.is_anomaly is True
@@ -104,18 +99,25 @@ def test_anomaly_creation():
 
 
 def test_anomaly_id_auto_generated():
-    from models.anomaly import AnomalyResult
     anomaly = AnomalyResult(log_id="x", score=0.5, is_anomaly=False, threshold=0.72)
     assert len(anomaly.id) == 36
 
 
 def test_anomaly_score_rejects_above_one():
-    from models.anomaly import AnomalyResult
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         AnomalyResult(log_id="x", score=1.5, is_anomaly=True, threshold=0.72)
 
 
 def test_anomaly_score_rejects_below_zero():
-    from models.anomaly import AnomalyResult
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         AnomalyResult(log_id="x", score=-0.1, is_anomaly=True, threshold=0.72)
+
+
+def test_anomaly_threshold_rejects_above_one():
+    with pytest.raises(ValidationError):
+        AnomalyResult(log_id="x", score=0.5, is_anomaly=False, threshold=1.5)
+
+
+def test_anomaly_threshold_rejects_below_zero():
+    with pytest.raises(ValidationError):
+        AnomalyResult(log_id="x", score=0.5, is_anomaly=False, threshold=-0.1)
