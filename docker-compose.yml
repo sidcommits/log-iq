@@ -3,6 +3,7 @@ version: "3.9"
 services:
   postgres:
     image: postgres:15
+    platform: linux/arm64
     environment:
       POSTGRES_DB: logiq
       POSTGRES_USER: logiq
@@ -19,6 +20,7 @@ services:
 
   qdrant:
     image: qdrant/qdrant:latest
+    platform: linux/arm64
     volumes:
       - qdrant_data:/qdrant/storage
     ports:
@@ -51,6 +53,7 @@ services:
 
   grafana:
     image: grafana/grafana:10.2.0
+    platform: linux/arm64
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
