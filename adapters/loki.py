@@ -47,7 +47,33 @@ class LokiAdapter(BaseSourceAdapter):
     async def fetch_logs(
         self, start: datetime, end: datetime, limit: int = 100
     ) -> list[LogEvent]:
-        raise NotImplementedError("implemented in Task 7")
+        start_ns = int(start.timestamp() * 1_000_000_000)
+        end_ns = int(end.timestamp() * 1_000_000_000)
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{self._url}/loki/api/v1/query_range",
+                params={
+                    "query": self._query,
+                    "start": start_ns,
+                    "end": end_ns,
+                    "limit": limit,
+                    "direction": "backward",
+                },
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        events: list[LogEvent] = []
+        for stream in data.get("data", {}).get("result", []):
+            for _ts, log_line in stream.get("values", []):
+                try:
+                    raw = json.loads(log_line)
+                    events.append(self.normalise(raw))
+                except (json.JSONDecodeError, KeyError, ValueError):
+                    continue
+        return events
 
     def stream_logs(self) -> AsyncIterator[LogEvent]:
         raise NotImplementedError("implemented in Task 9")

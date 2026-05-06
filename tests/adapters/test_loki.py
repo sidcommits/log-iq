@@ -100,3 +100,131 @@ def test_normalise_parses_timestamp_as_utc_datetime():
     adapter = LokiAdapter(url="http://loki:3100")
     event = adapter.normalise(_raw(timestamp="2026-05-06T10:00:00+00:00"))
     assert event.timestamp == datetime(2026, 5, 6, 10, 0, 0, tzinfo=timezone.utc)
+
+
+# ── fetch_logs ────────────────────────────────────────────────────────────────
+
+def _loki_response(log_dicts: list[dict]) -> MagicMock:
+    """Build a mock httpx response with Loki query_range shape."""
+    values = [
+        ["1746518400000000000", json.dumps(d)]
+        for d in log_dicts
+    ]
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json.return_value = {
+        "status": "success",
+        "data": {
+            "resultType": "streams",
+            "result": [
+                {
+                    "stream": {"service": "auth-service", "severity": "ERROR"},
+                    "values": values,
+                }
+            ],
+        },
+    }
+    return mock_resp
+
+
+@pytest.mark.asyncio
+async def test_fetch_logs_returns_log_events():
+    adapter = LokiAdapter(url="http://loki:3100")
+    mock_resp = _loki_response([_raw()])
+
+    with patch("adapters.loki.httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        MockClient.return_value = mock_client
+
+        events = await adapter.fetch_logs(
+            start=datetime(2026, 5, 6, 0, 0, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 5, 6, 12, 0, 0, tzinfo=timezone.utc),
+        )
+
+    assert len(events) == 1
+    assert events[0].severity == SeverityLevel.ERROR
+    assert events[0].service == "auth-service"
+    assert events[0].message == "connection pool exhausted"
+
+
+@pytest.mark.asyncio
+async def test_fetch_logs_calls_query_range_endpoint():
+    adapter = LokiAdapter(url="http://loki:3100")
+    mock_resp = _loki_response([_raw()])
+
+    with patch("adapters.loki.httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        MockClient.return_value = mock_client
+
+        await adapter.fetch_logs(
+            start=datetime(2026, 5, 6, 0, 0, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 5, 6, 12, 0, 0, tzinfo=timezone.utc),
+            limit=50,
+        )
+
+    call_kwargs = mock_client.get.call_args
+    assert "/loki/api/v1/query_range" in call_kwargs.args[0]
+    assert call_kwargs.kwargs["params"]["limit"] == 50
+
+
+@pytest.mark.asyncio
+async def test_fetch_logs_skips_malformed_json():
+    adapter = LokiAdapter(url="http://loki:3100")
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json.return_value = {
+        "data": {
+            "result": [
+                {
+                    "stream": {},
+                    "values": [
+                        ["1234", "not-valid-json"],
+                        ["1235", json.dumps(_raw(message="valid"))],
+                    ],
+                }
+            ]
+        }
+    }
+
+    with patch("adapters.loki.httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        MockClient.return_value = mock_client
+
+        events = await adapter.fetch_logs(
+            start=datetime(2026, 5, 6, 0, 0, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 5, 6, 12, 0, 0, tzinfo=timezone.utc),
+        )
+
+    assert len(events) == 1
+    assert events[0].message == "valid"
+
+
+@pytest.mark.asyncio
+async def test_fetch_logs_returns_empty_list_for_no_results():
+    adapter = LokiAdapter(url="http://loki:3100")
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json.return_value = {"data": {"result": []}}
+
+    with patch("adapters.loki.httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        MockClient.return_value = mock_client
+
+        events = await adapter.fetch_logs(
+            start=datetime(2026, 5, 6, 0, 0, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 5, 6, 12, 0, 0, tzinfo=timezone.utc),
+        )
+
+    assert events == []
