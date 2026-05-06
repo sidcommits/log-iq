@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from db.postgres import get_cursor, init_pool, upsert_cursor
+from db.postgres import fetch_logs_by_ids, fetch_logs_by_text, fetch_unembedded_logs, mark_embedded
+from models.log_event import LogEvent, SeverityLevel
 
 
 def _make_mock_pool():
@@ -76,7 +78,6 @@ async def test_upsert_cursor_executes_insert_on_conflict():
     assert ts_arg == ts
 
 
-from models.log_event import LogEvent, SeverityLevel
 from db.postgres import insert_logs
 
 
@@ -132,9 +133,6 @@ async def test_insert_logs_passes_all_events_as_records():
     _, records = mock_conn.executemany.call_args[0]
     assert len(records) == 3
     assert count == 3
-
-
-from db.postgres import fetch_logs_by_ids, fetch_logs_by_text, fetch_unembedded_logs, mark_embedded
 
 
 @pytest.mark.asyncio
@@ -195,3 +193,33 @@ async def test_fetch_logs_by_text_queries_ilike():
     assert "%auth error%" in query_arg
     assert limit_arg == 10
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_unembedded_logs_deserialises_row_to_log_event():
+    mock_pool, mock_conn = _make_mock_pool()
+    ts = datetime(2026, 5, 6, 10, 0, 0, tzinfo=timezone.utc)
+    # asyncpg returns a dict-like Record; use a plain dict in tests
+    mock_row = {
+        "id": "log-abc",
+        "timestamp": ts,
+        "severity": "ERROR",
+        "service": "auth-service",
+        "environment": "production",
+        "trace_id": None,
+        "span_id": None,
+        "message": "connection refused",
+        "metadata": {},
+        "raw": {},
+        "source": "loki",
+    }
+    mock_conn.fetch.return_value = [mock_row]
+
+    result = await fetch_unembedded_logs(mock_pool, limit=1)
+
+    assert len(result) == 1
+    event = result[0]
+    assert event.id == "log-abc"
+    assert event.severity.value == "ERROR"
+    assert event.service == "auth-service"
+    assert event.timestamp == ts
