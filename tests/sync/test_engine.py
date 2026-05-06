@@ -161,3 +161,96 @@ async def test_backoff_resets_on_success():
     # First sleep is backoff (1.0), second sleep is normal poll interval (30)
     assert sleep_calls[0] == 1.0
     assert sleep_calls[1] == 30
+
+
+# ── stream mode ───────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_stream_worker_flushes_at_batch_size():
+    pool = _make_pool()
+    events = [_make_event(i) for i in range(5)]
+    captured_batches: list[list] = []
+
+    async def fake_stream():
+        for e in events:
+            yield e
+
+    async def capturing_insert(p, evts):
+        captured_batches.append(list(evts))  # snapshot before buffer.clear()
+
+    adapter = _make_adapter()
+    adapter.stream_logs.return_value = fake_stream()
+
+    with patch("sync.engine.db.insert_logs", side_effect=capturing_insert):
+        worker = SourceWorker(
+            adapter=adapter,
+            pool=pool,
+            mode="stream",
+            stream_batch_size=3,
+            stream_flush_interval=5.0,
+        )
+        await worker._stream_once()
+
+    # 5 events with batch_size=3: first flush at 3 events, second flush with 2
+    assert len(captured_batches) == 2
+    assert len(captured_batches[0]) == 3
+    assert len(captured_batches[1]) == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_worker_flushes_on_timeout():
+    pool = _make_pool()
+    event = _make_event()
+    flushed = asyncio.Event()
+
+    async def mock_insert(p, evts):
+        flushed.set()
+
+    async def trickle():
+        yield event
+        await asyncio.sleep(10)  # longer than flush_interval — triggers timeout
+
+    adapter = _make_adapter()
+    adapter.stream_logs.return_value = trickle()
+
+    with patch("sync.engine.db.insert_logs", side_effect=mock_insert):
+        worker = SourceWorker(
+            adapter=adapter,
+            pool=pool,
+            mode="stream",
+            stream_batch_size=100,
+            stream_flush_interval=0.05,
+        )
+        task = asyncio.create_task(worker._stream_once())
+        await asyncio.wait_for(flushed.wait(), timeout=2.0)
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    assert flushed.is_set()
+
+
+@pytest.mark.asyncio
+async def test_stream_worker_start_creates_stream_task():
+    pool = _make_pool()
+    adapter = _make_adapter()
+
+    async def infinite_stream():
+        while True:
+            await asyncio.sleep(1)
+            yield _make_event()
+
+    adapter.stream_logs.return_value = infinite_stream()
+
+    with patch("sync.engine.db.insert_logs", AsyncMock()), \
+         patch("sync.engine.db.get_cursor", AsyncMock(return_value=None)), \
+         patch("sync.engine.db.upsert_cursor", AsyncMock()):
+        worker = SourceWorker(adapter=adapter, pool=pool, mode="stream")
+        await worker.start()
+        assert worker._task is not None
+        assert not worker._task.done()
+        await worker.stop()
+        assert worker._task.cancelled() or worker._task.done()
