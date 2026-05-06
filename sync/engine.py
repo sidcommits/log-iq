@@ -103,6 +103,8 @@ class SourceWorker:
                 if len(buffer) >= self._stream_batch_size:
                     await db.insert_logs(self._pool, buffer)
                     buffer.clear()
+            except asyncio.CancelledError:
+                raise
             except asyncio.TimeoutError:
                 if buffer:
                     await db.insert_logs(self._pool, buffer)
