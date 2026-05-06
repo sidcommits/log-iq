@@ -6,6 +6,7 @@ from pathlib import Path
 
 import asyncpg
 
+from models.anomaly import AnomalyResult
 from models.log_event import LogEvent, SeverityLevel
 from models.rca import RootCauseAnalysis
 from models.task import ActionableTask, TaskPriority, TaskStatus
@@ -268,3 +269,68 @@ async def update_task_status(
             new_status, task_id,
         )
     return _row_to_task(row) if row else None
+
+
+# ---------------------------------------------------------------------------
+# Anomaly helpers
+# ---------------------------------------------------------------------------
+
+def _row_to_anomaly(row) -> AnomalyResult:
+    return AnomalyResult(
+        id=row["id"],
+        log_id=row["log_id"],
+        score=row["score"],
+        is_anomaly=row["is_anomaly"],
+        threshold=row["threshold"],
+        reviewed=row["reviewed"],
+        detected_at=row["detected_at"],
+    )
+
+
+async def insert_anomaly(pool: asyncpg.Pool, anomaly: AnomalyResult) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO anomalies (id, log_id, score, is_anomaly, threshold, reviewed, detected_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (id) DO NOTHING
+            """,
+            anomaly.id, anomaly.log_id, anomaly.score, anomaly.is_anomaly,
+            anomaly.threshold, anomaly.reviewed, anomaly.detected_at,
+        )
+
+
+async def get_anomalies(
+    pool: asyncpg.Pool,
+    reviewed: bool | None,
+    is_anomaly: bool | None,
+    limit: int,
+    offset: int,
+) -> tuple[list[AnomalyResult], int]:
+    conditions: list[str] = []
+    params: list = []
+    if reviewed is not None:
+        params.append(reviewed)
+        conditions.append(f"reviewed = ${len(params)}")
+    if is_anomaly is not None:
+        params.append(is_anomaly)
+        conditions.append(f"is_anomaly = ${len(params)}")
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    count_params = params[:]
+    params += [limit, offset]
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            f"SELECT * FROM anomalies {where} ORDER BY detected_at DESC LIMIT ${len(params) - 1} OFFSET ${len(params)}",
+            *params,
+        )
+        total = await conn.fetchval(f"SELECT COUNT(*) FROM anomalies {where}", *count_params)
+    return [_row_to_anomaly(row) for row in rows], (total or 0)
+
+
+async def mark_anomaly_reviewed(pool: asyncpg.Pool, anomaly_id: str) -> AnomalyResult | None:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "UPDATE anomalies SET reviewed = TRUE WHERE id = $1 RETURNING *",
+            anomaly_id,
+        )
+    return _row_to_anomaly(row) if row else None

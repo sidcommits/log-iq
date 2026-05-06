@@ -369,3 +369,62 @@ async def test_update_task_status_returns_none_when_not_found():
     result = await update_task_status(mock_pool, "nonexistent-id", "approved")
 
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Task 4: Anomaly helpers
+# ---------------------------------------------------------------------------
+from models.anomaly import AnomalyResult
+
+
+def _make_anomaly(**kwargs) -> AnomalyResult:
+    defaults = dict(
+        log_id="log-001",
+        score=0.4,
+        is_anomaly=True,
+        threshold=0.72,
+        reviewed=False,
+    )
+    return AnomalyResult(**{**defaults, **kwargs})
+
+
+@pytest.mark.asyncio
+async def test_insert_anomaly_executes_insert():
+    from db.postgres import insert_anomaly
+    anomaly = _make_anomaly()
+    mock_conn = AsyncMock()
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_conn), __aexit__=AsyncMock(return_value=False)))
+
+    await insert_anomaly(mock_pool, anomaly)
+
+    mock_conn.execute.assert_called_once()
+    assert anomaly.id in mock_conn.execute.call_args[0]
+
+
+@pytest.mark.asyncio
+async def test_get_anomalies_returns_empty_when_no_rows():
+    from db.postgres import get_anomalies
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(return_value=[])
+    mock_conn.fetchval = AsyncMock(return_value=0)
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_conn), __aexit__=AsyncMock(return_value=False)))
+
+    anomalies, total = await get_anomalies(mock_pool, reviewed=None, is_anomaly=None, limit=50, offset=0)
+
+    assert anomalies == []
+    assert total == 0
+
+
+@pytest.mark.asyncio
+async def test_mark_anomaly_reviewed_returns_none_when_not_found():
+    from db.postgres import mark_anomaly_reviewed
+    mock_conn = AsyncMock()
+    mock_conn.fetchrow = AsyncMock(return_value=None)
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_conn), __aexit__=AsyncMock(return_value=False)))
+
+    result = await mark_anomaly_reviewed(mock_pool, "nonexistent-id")
+
+    assert result is None
