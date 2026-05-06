@@ -79,4 +79,11 @@ class LokiAdapter(BaseSourceAdapter):
         raise NotImplementedError("implemented in Task 9")
 
     async def health_check(self) -> dict:
-        raise NotImplementedError("implemented in Task 8")
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"{self._url}/ready", timeout=5.0)
+                if resp.status_code == 200:
+                    return {"status": "ok", "detail": "Loki is ready"}
+                return {"status": "error", "detail": f"HTTP {resp.status_code}"}
+        except Exception as exc:
+            return {"status": "error", "detail": str(exc)}

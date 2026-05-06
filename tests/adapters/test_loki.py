@@ -228,3 +228,60 @@ async def test_fetch_logs_returns_empty_list_for_no_results():
         )
 
     assert events == []
+
+
+# ── health_check ──────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_health_check_returns_ok_on_200():
+    adapter = LokiAdapter(url="http://loki:3100")
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    with patch("adapters.loki.httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        MockClient.return_value = mock_client
+
+        result = await adapter.health_check()
+
+    assert result["status"] == "ok"
+    assert "detail" in result
+
+
+@pytest.mark.asyncio
+async def test_health_check_returns_error_on_non_200():
+    adapter = LokiAdapter(url="http://loki:3100")
+    mock_resp = MagicMock()
+    mock_resp.status_code = 503
+
+    with patch("adapters.loki.httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        MockClient.return_value = mock_client
+
+        result = await adapter.health_check()
+
+    assert result["status"] == "error"
+    assert "503" in result["detail"]
+
+
+@pytest.mark.asyncio
+async def test_health_check_returns_error_on_connection_failure():
+    adapter = LokiAdapter(url="http://loki:3100")
+
+    with patch("adapters.loki.httpx.AsyncClient") as MockClient:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        MockClient.return_value = mock_client
+
+        result = await adapter.health_check()
+
+    assert result["status"] == "error"
+    assert "refused" in result["detail"]
