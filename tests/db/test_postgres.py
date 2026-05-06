@@ -74,3 +74,61 @@ async def test_upsert_cursor_executes_insert_on_conflict():
     assert "ON CONFLICT" in sql
     assert source_arg == "loki"
     assert ts_arg == ts
+
+
+from models.log_event import LogEvent, SeverityLevel
+from db.postgres import insert_logs
+
+
+def _make_event(**kwargs) -> LogEvent:
+    defaults = dict(
+        id="test-id-001",
+        timestamp=datetime(2026, 5, 6, 10, 0, 0, tzinfo=timezone.utc),
+        severity=SeverityLevel.ERROR,
+        service="auth-service",
+        environment="production",
+        message="connection pool exhausted",
+        source="loki",
+    )
+    return LogEvent(**{**defaults, **kwargs})
+
+
+@pytest.mark.asyncio
+async def test_insert_logs_calls_executemany_with_correct_columns():
+    mock_pool, mock_conn = _make_mock_pool()
+    event = _make_event()
+
+    count = await insert_logs(mock_pool, [event])
+
+    mock_conn.executemany.assert_called_once()
+    sql, records = mock_conn.executemany.call_args[0]
+    assert "INSERT INTO logs" in sql
+    assert "ON CONFLICT (id) DO NOTHING" in sql
+    assert len(records) == 1
+    row = records[0]
+    assert row[0] == "test-id-001"
+    assert row[2] == "ERROR"
+    assert row[3] == "auth-service"
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_insert_logs_returns_zero_for_empty_list():
+    mock_pool, mock_conn = _make_mock_pool()
+
+    count = await insert_logs(mock_pool, [])
+
+    mock_conn.executemany.assert_not_called()
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_insert_logs_passes_all_events_as_records():
+    mock_pool, mock_conn = _make_mock_pool()
+    events = [_make_event(id=f"id-{i}", message=f"msg-{i}") for i in range(3)]
+
+    count = await insert_logs(mock_pool, events)
+
+    _, records = mock_conn.executemany.call_args[0]
+    assert len(records) == 3
+    assert count == 3
