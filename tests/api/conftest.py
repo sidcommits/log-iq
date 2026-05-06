@@ -1,3 +1,4 @@
+# tests/api/conftest.py
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -7,7 +8,6 @@ import pytest
 def mock_lifespan_deps(monkeypatch):
     mock_pool = AsyncMock()
     mock_pool.close = AsyncMock()
-
     mock_qdrant = MagicMock()
 
     monkeypatch.setattr("api.main.init_pool", AsyncMock(return_value=mock_pool))

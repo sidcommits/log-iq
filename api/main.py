@@ -1,16 +1,22 @@
+# api/main.py
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import yaml
+from anthropic import AsyncAnthropic
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from openai import AsyncOpenAI
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from api.routes.analyze import router as analyze_router
+from api.routes.anomalies import router as anomalies_router
+from api.routes.correlate import router as correlate_router
 from api.routes.health import router as health_router
 from api.routes.search import router as search_router
+from api.routes.tasks import router as tasks_router
 from db.postgres import init_pool
 from db.qdrant import ensure_collection, init_qdrant
 from ingestion.pipeline import IngestionWorker
@@ -23,6 +29,7 @@ _config: dict = yaml.safe_load(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.config = _config
     app.state.db_pool = await init_pool(dsn=_config["database"]["url"])
 
     qdrant_cfg = _config["qdrant"]
@@ -31,7 +38,8 @@ async def lifespan(app: FastAPI):
     )
     await ensure_collection(app.state.qdrant_client, qdrant_cfg.get("collection", "log_events"))
 
-    app.state.openai_client = AsyncOpenAI()  # reads OPENAI_API_KEY from env
+    app.state.openai_client = AsyncOpenAI()
+    app.state.anthropic_client = AsyncAnthropic()
 
     engine = SyncEngine(config=_config, pool=app.state.db_pool)
     await engine.start()
@@ -42,6 +50,7 @@ async def lifespan(app: FastAPI):
         qdrant_client=app.state.qdrant_client,
         batch_size=_config["ingestion"].get("batch_size", 100),
         collection=qdrant_cfg.get("collection", "log_events"),
+        anomaly_config=_config.get("anomaly", {}),
     )
     await ingestion_worker.start()
 
@@ -72,3 +81,7 @@ app.add_middleware(
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 app.include_router(health_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
+app.include_router(analyze_router, prefix="/api")
+app.include_router(correlate_router, prefix="/api")
+app.include_router(anomalies_router, prefix="/api")
+app.include_router(tasks_router, prefix="/api")

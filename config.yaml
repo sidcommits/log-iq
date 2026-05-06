@@ -53,3 +53,19 @@ agents:
   require_human_approval: true
   confidence_threshold: 0.70
   max_files_per_fix: 3
+
+rca:
+  semantic_neighbors: true
+  max_semantic_k: 5
+  trace_logs: true
+  max_trace_logs: 20
+  model: claude-sonnet-4-20250514
+  timeout_seconds: 30
+
+anomaly:
+  knn_k: 10
+  threshold: 0.72
+
+correlate:
+  fresh_analysis: false
+  max_trace_logs: 200
