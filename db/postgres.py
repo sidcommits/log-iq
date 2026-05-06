@@ -260,6 +260,12 @@ async def get_tasks(
     return [_row_to_task(row) for row in rows], (total or 0)
 
 
+async def get_task_by_id(pool: asyncpg.Pool, task_id: str) -> ActionableTask | None:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM tasks WHERE id = $1", task_id)
+    return _row_to_task(row) if row else None
+
+
 async def update_task_status(
     pool: asyncpg.Pool, task_id: str, new_status: str
 ) -> ActionableTask | None:
