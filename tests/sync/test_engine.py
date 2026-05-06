@@ -254,3 +254,72 @@ async def test_stream_worker_start_creates_stream_task():
         assert not worker._task.done()
         await worker.stop()
         assert worker._task.cancelled() or worker._task.done()
+
+
+from sync.engine import SyncEngine
+
+
+# ── SyncEngine ────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_sync_engine_creates_one_worker_per_source():
+    config = {
+        "sources": [
+            {"name": "loki", "type": "loki", "url": "http://loki:3100", "mode": "poll", "poll_interval_seconds": 30},
+            {"name": "loki2", "type": "loki", "url": "http://loki2:3100", "mode": "stream", "poll_interval_seconds": 30},
+        ]
+    }
+    pool = _make_pool()
+
+    with patch("sync.engine.LokiAdapter") as mock_loki_cls:
+        mock_loki_cls.return_value = _make_adapter()
+        engine = SyncEngine(config=config, pool=pool)
+
+    assert len(engine._workers) == 2
+
+
+@pytest.mark.asyncio
+async def test_sync_engine_start_starts_all_workers():
+    config = {
+        "sources": [
+            {"name": "loki", "type": "loki", "url": "http://loki:3100", "mode": "poll", "poll_interval_seconds": 30},
+        ]
+    }
+    pool = _make_pool()
+
+    with patch("sync.engine.LokiAdapter") as mock_loki_cls, \
+         patch.object(SourceWorker, "start", new_callable=AsyncMock) as mock_start, \
+         patch.object(SourceWorker, "stop", new_callable=AsyncMock):
+        mock_loki_cls.return_value = _make_adapter()
+        engine = SyncEngine(config=config, pool=pool)
+        await engine.start()
+
+    mock_start.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_sync_engine_stop_stops_all_workers():
+    config = {
+        "sources": [
+            {"name": "loki", "type": "loki", "url": "http://loki:3100", "mode": "poll", "poll_interval_seconds": 30},
+            {"name": "loki2", "type": "loki", "url": "http://loki2:3100", "mode": "poll", "poll_interval_seconds": 30},
+        ]
+    }
+    pool = _make_pool()
+
+    with patch("sync.engine.LokiAdapter") as mock_loki_cls, \
+         patch.object(SourceWorker, "start", new_callable=AsyncMock), \
+         patch.object(SourceWorker, "stop", new_callable=AsyncMock) as mock_stop:
+        mock_loki_cls.return_value = _make_adapter()
+        engine = SyncEngine(config=config, pool=pool)
+        await engine.start()
+        await engine.stop()
+
+    assert mock_stop.call_count == 2
+
+
+def test_make_adapter_raises_for_unknown_type():
+    from sync.engine import _make_adapter
+    with pytest.raises(ValueError, match="Unknown source type"):
+        _make_adapter({"type": "splunk", "url": "http://splunk", "name": "s"})
