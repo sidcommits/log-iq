@@ -147,9 +147,9 @@ def _row_to_rca(row) -> RootCauseAnalysis:
         trace_id=row["trace_id"],
         summary=row["summary"],
         root_cause=row["root_cause"],
-        affected_services=list(row["affected_services"]),
+        affected_services=list(row["affected_services"] or []),
         confidence=row["confidence"],
-        suggested_fixes=list(row["suggested_fixes"]),
+        suggested_fixes=list(row["suggested_fixes"] or []),
         created_at=row["created_at"],
     )
 
