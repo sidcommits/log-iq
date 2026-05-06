@@ -1,4 +1,5 @@
 import json
+import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime
 from urllib.parse import quote
@@ -8,6 +9,12 @@ import websockets
 
 from adapters.base import BaseSourceAdapter
 from models.log_event import LogEvent, SeverityLevel
+
+_LOGIQ_NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")  # uuid.NAMESPACE_URL
+
+
+def _dedup_id(source: str, timestamp: str, message: str) -> str:
+    return str(uuid.uuid5(_LOGIQ_NS, f"{source}:{timestamp}:{message}"))
 
 
 class LokiAdapter(BaseSourceAdapter):
@@ -31,7 +38,9 @@ class LokiAdapter(BaseSourceAdapter):
         except ValueError:
             severity = SeverityLevel.UNKNOWN
 
+        ts_str = raw.get("timestamp", "")
         return LogEvent(
+            id=_dedup_id(self._name, ts_str, raw.get("message", "")),
             timestamp=datetime.fromisoformat(raw["timestamp"]),
             severity=severity,
             service=raw.get("service", "unknown"),

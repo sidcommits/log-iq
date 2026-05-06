@@ -296,3 +296,34 @@ async def test_stream_logs_is_async_generator():
     gen = adapter.stream_logs()
     assert inspect.isasyncgen(gen)
     await gen.aclose()
+
+
+# ── normalise: deterministic ID ───────────────────────────────────────────────
+
+def test_normalise_produces_deterministic_id():
+    adapter = LokiAdapter(url="http://loki:3100")
+    raw = {
+        "timestamp": "2026-05-06T10:00:00+00:00",
+        "severity": "ERROR",
+        "service": "auth-service",
+        "environment": "production",
+        "message": "connection pool exhausted",
+        "metadata": {},
+    }
+    event1 = adapter.normalise(raw)
+    event2 = adapter.normalise(raw)
+    assert event1.id == event2.id
+
+
+def test_normalise_produces_different_ids_for_different_messages():
+    adapter = LokiAdapter(url="http://loki:3100")
+    raw_a = {
+        "timestamp": "2026-05-06T10:00:00+00:00",
+        "severity": "ERROR",
+        "service": "svc",
+        "environment": "production",
+        "message": "error A",
+        "metadata": {},
+    }
+    raw_b = {**raw_a, "message": "error B"}
+    assert adapter.normalise(raw_a).id != adapter.normalise(raw_b).id
