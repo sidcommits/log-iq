@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 import pytest
+from pydantic import ValidationError
 
 from models.log_event import LogEvent, SeverityLevel
 
@@ -61,7 +62,7 @@ def test_log_event_severity_accepts_all_levels():
 
 
 def test_log_event_severity_rejects_invalid_string():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         _make(severity="CRITICAL")  # not a valid SeverityLevel
 
 
@@ -90,3 +91,16 @@ def test_log_event_model_dump_round_trip():
 def test_severity_level_is_str_enum():
     assert SeverityLevel.ERROR == "ERROR"
     assert isinstance(SeverityLevel.ERROR, str)
+
+
+def test_timestamp_must_be_timezone_aware():
+    from datetime import datetime
+    with pytest.raises(ValidationError):
+        _make(timestamp=datetime(2026, 5, 6, 10, 0, 0))  # no tzinfo
+
+
+def test_log_event_is_immutable():
+    from pydantic import ValidationError
+    event = _make()
+    with pytest.raises(ValidationError):
+        event.message = "tampered"
