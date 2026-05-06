@@ -8,6 +8,7 @@ import asyncpg
 
 from models.log_event import LogEvent, SeverityLevel
 from models.rca import RootCauseAnalysis
+from models.task import ActionableTask, TaskPriority, TaskStatus
 
 _MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 _MIGRATION_SQL = "\n".join(
@@ -196,3 +197,74 @@ async def append_audit_log(pool: asyncpg.Pool, event_type: str, payload: dict) -
             "INSERT INTO audit_log (event_type, payload) VALUES ($1, $2::jsonb)",
             event_type, json.dumps(payload),
         )
+
+
+# ---------------------------------------------------------------------------
+# Task helpers
+# ---------------------------------------------------------------------------
+
+def _row_to_task(row) -> ActionableTask:
+    return ActionableTask(
+        id=row["id"],
+        rca_id=row["rca_id"],
+        log_id=row["log_id"],
+        title=row["title"],
+        description=row["description"],
+        status=TaskStatus(row["status"]),
+        priority=TaskPriority(row["priority"]),
+        agent_id=row["agent_id"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+async def insert_task(pool: asyncpg.Pool, task: ActionableTask) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO tasks
+                (id, rca_id, log_id, title, description, status, priority, agent_id, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            """,
+            task.id, task.rca_id, task.log_id, task.title, task.description,
+            task.status.value, task.priority.value, task.agent_id,
+            task.created_at, task.updated_at,
+        )
+
+
+async def get_tasks(
+    pool: asyncpg.Pool,
+    status: str | None,
+    priority: str | None,
+    limit: int,
+    offset: int,
+) -> tuple[list[ActionableTask], int]:
+    conditions: list[str] = []
+    params: list = []
+    if status is not None:
+        params.append(status)
+        conditions.append(f"status = ${len(params)}")
+    if priority is not None:
+        params.append(priority)
+        conditions.append(f"priority = ${len(params)}")
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    count_params = params[:]
+    params += [limit, offset]
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            f"SELECT * FROM tasks {where} ORDER BY created_at DESC LIMIT ${len(params) - 1} OFFSET ${len(params)}",
+            *params,
+        )
+        total = await conn.fetchval(f"SELECT COUNT(*) FROM tasks {where}", *count_params)
+    return [_row_to_task(row) for row in rows], (total or 0)
+
+
+async def update_task_status(
+    pool: asyncpg.Pool, task_id: str, new_status: str
+) -> ActionableTask | None:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "UPDATE tasks SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+            new_status, task_id,
+        )
+    return _row_to_task(row) if row else None

@@ -309,3 +309,63 @@ async def test_append_audit_log_inserts_event():
 
     mock_conn.execute.assert_called_once()
     assert "rca_created" in mock_conn.execute.call_args[0]
+
+
+# ---------------------------------------------------------------------------
+# Task 3: Task helpers
+# ---------------------------------------------------------------------------
+from models.task import ActionableTask, TaskStatus, TaskPriority
+
+
+def _make_task(**kwargs) -> ActionableTask:
+    defaults = dict(
+        rca_id="rca-001",
+        log_id="log-001",
+        title="Increase DB pool size",
+        description="Increase the connection pool from 10 to 50",
+        status=TaskStatus.PENDING,
+        priority=TaskPriority.HIGH,
+    )
+    return ActionableTask(**{**defaults, **kwargs})
+
+
+@pytest.mark.asyncio
+async def test_insert_task_executes_insert():
+    from db.postgres import insert_task
+    task = _make_task()
+    mock_conn = AsyncMock()
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_conn), __aexit__=AsyncMock(return_value=False)))
+
+    await insert_task(mock_pool, task)
+
+    mock_conn.execute.assert_called_once()
+    assert task.id in mock_conn.execute.call_args[0]
+
+
+@pytest.mark.asyncio
+async def test_get_tasks_returns_empty_list_when_no_rows():
+    from db.postgres import get_tasks
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(return_value=[])
+    mock_conn.fetchval = AsyncMock(return_value=0)
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_conn), __aexit__=AsyncMock(return_value=False)))
+
+    tasks, total = await get_tasks(mock_pool, status=None, priority=None, limit=50, offset=0)
+
+    assert tasks == []
+    assert total == 0
+
+
+@pytest.mark.asyncio
+async def test_update_task_status_returns_none_when_not_found():
+    from db.postgres import update_task_status
+    mock_conn = AsyncMock()
+    mock_conn.fetchrow = AsyncMock(return_value=None)
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_conn), __aexit__=AsyncMock(return_value=False)))
+
+    result = await update_task_status(mock_pool, "nonexistent-id", "approved")
+
+    assert result is None
