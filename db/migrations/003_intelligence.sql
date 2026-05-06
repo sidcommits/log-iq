@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS rca (
     summary           TEXT        NOT NULL,
     root_cause        TEXT        NOT NULL,
     affected_services JSONB       NOT NULL DEFAULT '[]',
-    confidence        FLOAT       NOT NULL,
+    confidence        FLOAT       NOT NULL CHECK (confidence >= 0.0 AND confidence <= 1.0),
     suggested_fixes   JSONB       NOT NULL DEFAULT '[]',
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -21,8 +21,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     log_id      TEXT        NOT NULL REFERENCES logs(id),
     title       TEXT        NOT NULL,
     description TEXT        NOT NULL,
-    status      TEXT        NOT NULL DEFAULT 'pending',
-    priority    TEXT        NOT NULL DEFAULT 'medium',
+    status      TEXT        NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','in_progress','resolved','dismissed')),
+    priority    TEXT        NOT NULL DEFAULT 'medium' CHECK (priority IN ('low','medium','high','critical')),
     agent_id    TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE INDEX IF NOT EXISTS idx_tasks_status   ON tasks (status);
 CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks (priority);
 CREATE INDEX IF NOT EXISTS idx_tasks_rca_id   ON tasks (rca_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_log_id   ON tasks (log_id);
 
 CREATE TABLE IF NOT EXISTS anomalies (
     id          TEXT        PRIMARY KEY,
