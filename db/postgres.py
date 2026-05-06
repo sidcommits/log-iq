@@ -5,9 +5,29 @@ from pathlib import Path
 
 import asyncpg
 
-from models.log_event import LogEvent
+from models.log_event import LogEvent, SeverityLevel
 
-_MIGRATION_SQL = (Path(__file__).parent / "migrations" / "001_init.sql").read_text()
+_MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+_MIGRATION_SQL = "\n".join(
+    p.read_text()
+    for p in sorted(_MIGRATIONS_DIR.glob("*.sql"), key=lambda p: p.name)
+)
+
+
+def _row_to_log_event(row) -> LogEvent:
+    return LogEvent(
+        id=row["id"],
+        timestamp=row["timestamp"],
+        severity=SeverityLevel(row["severity"]),
+        service=row["service"],
+        environment=row["environment"],
+        trace_id=row["trace_id"],
+        span_id=row["span_id"],
+        message=row["message"],
+        metadata=row["metadata"] or {},
+        raw=row["raw"] or {},
+        source=row["source"],
+    )
 
 
 async def init_pool(dsn: str) -> asyncpg.Pool:
@@ -72,3 +92,43 @@ async def insert_logs(pool: asyncpg.Pool, events: list[LogEvent]) -> int:
             records,
         )
     return len(events)
+
+
+async def fetch_unembedded_logs(pool: asyncpg.Pool, limit: int = 100) -> list[LogEvent]:
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM logs WHERE embedded_at IS NULL ORDER BY timestamp ASC LIMIT $1",
+            limit,
+        )
+    return [_row_to_log_event(row) for row in rows]
+
+
+async def mark_embedded(pool: asyncpg.Pool, ids: list[str]) -> None:
+    if not ids:
+        return
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE logs SET embedded_at = NOW() WHERE id = ANY($1)",
+            ids,
+        )
+
+
+async def fetch_logs_by_ids(pool: asyncpg.Pool, ids: list[str]) -> list[LogEvent]:
+    if not ids:
+        return []
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM logs WHERE id = ANY($1)",
+            ids,
+        )
+    return [_row_to_log_event(row) for row in rows]
+
+
+async def fetch_logs_by_text(pool: asyncpg.Pool, query: str, limit: int) -> list[LogEvent]:
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM logs WHERE message ILIKE $1 ORDER BY timestamp DESC LIMIT $2",
+            f"%{query}%",
+            limit,
+        )
+    return [_row_to_log_event(row) for row in rows]

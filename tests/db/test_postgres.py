@@ -132,3 +132,66 @@ async def test_insert_logs_passes_all_events_as_records():
     _, records = mock_conn.executemany.call_args[0]
     assert len(records) == 3
     assert count == 3
+
+
+from db.postgres import fetch_logs_by_ids, fetch_logs_by_text, fetch_unembedded_logs, mark_embedded
+
+
+@pytest.mark.asyncio
+async def test_fetch_unembedded_logs_queries_where_embedded_at_is_null():
+    mock_pool, mock_conn = _make_mock_pool()
+    mock_conn.fetch.return_value = []
+
+    result = await fetch_unembedded_logs(mock_pool, limit=50)
+
+    mock_conn.fetch.assert_called_once()
+    sql, limit_arg = mock_conn.fetch.call_args[0]
+    assert "embedded_at IS NULL" in sql
+    assert limit_arg == 50
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_mark_embedded_executes_update():
+    mock_pool, mock_conn = _make_mock_pool()
+
+    await mark_embedded(mock_pool, ["id-1", "id-2"])
+
+    mock_conn.execute.assert_called_once()
+    sql, ids_arg = mock_conn.execute.call_args[0]
+    assert "UPDATE logs SET embedded_at" in sql
+    assert ids_arg == ["id-1", "id-2"]
+
+
+@pytest.mark.asyncio
+async def test_mark_embedded_skips_empty_list():
+    mock_pool, mock_conn = _make_mock_pool()
+
+    await mark_embedded(mock_pool, [])
+
+    mock_conn.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fetch_logs_by_ids_returns_empty_without_query():
+    mock_pool, mock_conn = _make_mock_pool()
+
+    result = await fetch_logs_by_ids(mock_pool, [])
+
+    mock_conn.fetch.assert_not_called()
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_logs_by_text_queries_ilike():
+    mock_pool, mock_conn = _make_mock_pool()
+    mock_conn.fetch.return_value = []
+
+    result = await fetch_logs_by_text(mock_pool, "auth error", limit=10)
+
+    mock_conn.fetch.assert_called_once()
+    sql, query_arg, limit_arg = mock_conn.fetch.call_args[0]
+    assert "ILIKE" in sql
+    assert "%auth error%" in query_arg
+    assert limit_arg == 10
+    assert result == []
