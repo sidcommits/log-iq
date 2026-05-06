@@ -10,8 +10,9 @@ from openai import AsyncOpenAI
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import PointStruct
 
-from db.postgres import fetch_unembedded_logs, mark_embedded
+from db.postgres import fetch_unembedded_logs, insert_anomaly, mark_embedded
 from db.qdrant import upsert_vectors
+from intelligence.anomaly import score_batch
 from models.log_event import LogEvent
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ class IngestionWorker:
         poll_interval: float = 5.0,
         batch_size: int = 100,
         collection: str = "log_events",
+        anomaly_config: dict | None = None,
     ) -> None:
         self._pool = pool
         self._openai = openai_client
@@ -56,6 +58,7 @@ class IngestionWorker:
         self._poll_interval = poll_interval
         self._batch_size = batch_size
         self._collection = collection
+        self._anomaly_config = anomaly_config or {}
         self._task: asyncio.Task | None = None
         self._backoff = _BASE_BACKOFF
 
@@ -124,5 +127,23 @@ class IngestionWorker:
         ]
 
         await upsert_vectors(self._qdrant, points, self._collection)
+
+        # Extract first-chunk vector per event for anomaly scoring
+        event_first_vector: dict[str, list[float]] = {}
+        for (event, chunk_idx, _), embedding in zip(items, embeddings):
+            if chunk_idx == 0:
+                event_first_vector[event.id] = embedding
+
+        # Score anomalies inline — errors must not block ingestion
+        try:
+            query_vectors = [event_first_vector[e.id] for e in events]
+            anomaly_results = await score_batch(
+                events, query_vectors, self._qdrant, self._anomaly_config, self._collection
+            )
+            for result in anomaly_results:
+                await insert_anomaly(self._pool, result)
+        except Exception as exc:
+            logger.warning("Anomaly scoring failed, skipping: %s", exc)
+
         await mark_embedded(self._pool, [e.id for e in events])
         return True
