@@ -1,8 +1,6 @@
 /* frontend/src/index.css */
 @import "tailwindcss";
 
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Azeret+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap');
-
 :root {
   --bg:           #07090c;
   --bg-panel:     #0c1018;
