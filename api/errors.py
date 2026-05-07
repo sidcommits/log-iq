@@ -1,11 +1,13 @@
 # api/errors.py
 from __future__ import annotations
 
+import hmac
 import logging
 from contextvars import ContextVar
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,18 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     )
 
 
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "request validation failed",
+            "code": "http_422",
+            "request_id": _request_id.get(""),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
     return JSONResponse(
@@ -56,7 +70,7 @@ async def apply_auth(request: Request, config: dict) -> JSONResponse | None:
     cfg = config.get("auth", {})
     if cfg.get("enabled") and request.url.path not in _PUBLIC_PATHS:
         key = request.headers.get("X-API-Key", "")
-        if key != cfg.get("api_key", ""):
+        if not hmac.compare_digest(key, cfg.get("api_key", "")):
             return JSONResponse(
                 status_code=401,
                 content={

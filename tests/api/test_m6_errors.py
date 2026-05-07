@@ -6,17 +6,26 @@ import uuid
 import pytest
 from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
+from pydantic import BaseModel
+
+
+class _ValidationBody(BaseModel):
+    required_field: str
 
 
 def _make_error_app() -> FastAPI:
+    from fastapi.exceptions import RequestValidationError
+
     from api.errors import (
         http_exception_handler,
+        request_validation_exception_handler,
         set_request_id,
         unhandled_exception_handler,
     )
 
     app = FastAPI()
     app.add_exception_handler(HTTPException, http_exception_handler)
+    app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
     @app.middleware("http")
@@ -43,6 +52,10 @@ def _make_error_app() -> FastAPI:
     @app.get("/api/health")
     async def _health():
         return {"status": "healthy"}
+
+    @app.post("/raise-validation")
+    async def _raise_validation(body: _ValidationBody):
+        return {"ok": True}
 
     return app
 
@@ -167,3 +180,16 @@ async def test_auth_bypasses_health_endpoint():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         r = await ac.get("/api/health")  # no key
     assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_request_validation_error_returns_standard_format(error_app):
+    async with AsyncClient(transport=ASGITransport(app=error_app), base_url="http://test") as ac:
+        r = await ac.post("/raise-validation", json={})  # missing required_field
+    assert r.status_code == 422
+    body = r.json()
+    assert body["error"] == "request validation failed"
+    assert body["code"] == "http_422"
+    assert "request_id" in body
+    assert "timestamp" in body
+    assert "detail" not in body

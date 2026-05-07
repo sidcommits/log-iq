@@ -6,6 +6,7 @@ from pathlib import Path
 import yaml
 from anthropic import AsyncAnthropic
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from openai import AsyncOpenAI
@@ -14,6 +15,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from api.errors import (
     apply_auth,
     http_exception_handler,
+    request_validation_exception_handler,
     set_request_id,
     unhandled_exception_handler,
 )
@@ -72,6 +74,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="LogIQ", version="0.1.0", lifespan=lifespan)
 
 app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
 
 # Middleware ordering: Starlette prepends each add_middleware call, so the LAST
