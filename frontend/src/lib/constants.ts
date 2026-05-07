@@ -18,19 +18,19 @@ export const SEVERITY_COLORS = {
     text: 'var(--blue)',
   },
   DEBUG: {
-    bg: '#1a1a1a',
-    border: '#333',
-    text: '#666',
+    bg: 'var(--bg-panel)',
+    border: 'var(--text-muted)',
+    text: 'var(--text-muted)',
   },
   TRACE: {
-    bg: '#1a1a1a',
-    border: '#333',
-    text: '#555',
+    bg: 'var(--bg-panel)',
+    border: 'var(--text-muted)',
+    text: 'var(--text-muted)',
   },
   UNKNOWN: {
-    bg: '#1a1a1a',
-    border: '#333',
-    text: '#555',
+    bg: 'var(--bg-panel)',
+    border: 'var(--text-muted)',
+    text: 'var(--text-muted)',
   },
 } as const
 
