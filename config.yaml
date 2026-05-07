@@ -32,12 +32,6 @@ ingestion:
   batch_size: 100
   max_chunk_tokens: 512
 
-anomaly:
-  enabled: true
-  knn_k: 10
-  threshold: 0.72
-  per_service_overrides: {}
-
 auth:
   enabled: false            # set true in production
   api_key: ${LOGIQ_API_KEY}
