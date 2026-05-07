@@ -14,7 +14,7 @@ _TIMEOUT = 5.0
 
 async def _check_postgres(pool) -> dict:
     try:
-        async with asyncio.timeout(_TIMEOUT):
+        async with asyncio.timeout(_TIMEOUT):  # Python 3.11+
             async with pool.acquire() as conn:
                 await conn.fetchval("SELECT 1")
         return {"status": "ok"}
@@ -24,7 +24,7 @@ async def _check_postgres(pool) -> dict:
 
 async def _check_qdrant(qdrant_client, collection: str) -> dict:
     try:
-        async with asyncio.timeout(_TIMEOUT):
+        async with asyncio.timeout(_TIMEOUT):  # Python 3.11+
             await qdrant_client.get_collection(collection)
         return {"status": "ok"}
     except Exception as exc:

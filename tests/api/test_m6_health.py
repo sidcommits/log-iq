@@ -59,6 +59,7 @@ async def test_health_returns_503_when_qdrant_fails(test_app, monkeypatch):
         async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
             r = await ac.get("/api/health")
     assert r.status_code == 503
+    assert r.json()["status"] == "degraded"
     assert r.json()["dependencies"]["qdrant"]["status"] == "error"
 
 
@@ -103,3 +104,17 @@ async def test_health_includes_version(test_app, monkeypatch):
         async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
             r = await ac.get("/api/health")
     assert r.json()["version"] == "0.1.0"
+
+
+@pytest.mark.asyncio
+async def test_health_returns_503_when_anthropic_key_missing(test_app, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with (
+        patch("api.routes.health._check_postgres", AsyncMock(return_value={"status": "ok"})),
+        patch("api.routes.health._check_qdrant", AsyncMock(return_value={"status": "ok"})),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+            r = await ac.get("/api/health")
+    assert r.status_code == 503
+    assert r.json()["dependencies"]["claude"]["status"] == "error"
