@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useTasks, useApproveTask, useDismissTask } from '../hooks/useTasks'
-import { approveTask, dismissTask } from '../api/tasks'
 import { ErrorState } from '../components/ui/ErrorState'
 import type { ActionableTask, TaskStatus } from '../api/types'
 
@@ -22,8 +21,8 @@ export function TasksPage() {
   const [activeStatus, setActiveStatus] = useState<TaskStatus>('pending')
   const filters = { status: activeStatus }
   const { data, isLoading, isError, refetch } = useTasks(filters)
-  useApproveTask(filters)
-  useDismissTask(filters)
+  const { mutate: approve } = useApproveTask(filters)
+  const { mutate: dismiss } = useDismissTask(filters)
 
   if (isError) return <ErrorState message="Failed to load tasks" onRetry={refetch} />
 
@@ -51,7 +50,7 @@ export function TasksPage() {
       )}
 
       {!isLoading && data?.tasks.map((task) => (
-        <TaskCard key={task.id} task={task} onApprove={() => { approveTask(task.id); refetch() }} onDismiss={() => { dismissTask(task.id); refetch() }} />
+        <TaskCard key={task.id} task={task} onApprove={() => approve(task.id)} onDismiss={() => dismiss(task.id)} />
       ))}
     </div>
   )

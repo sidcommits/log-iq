@@ -36,7 +36,7 @@ describe('TasksPage', () => {
     renderWithProviders(<TasksPage />)
     await waitFor(() => screen.getByText('Increase PostgreSQL connection pool size from 50 to 200'))
     fireEvent.click(screen.getByText(/approve/i))
-    expect(tasksApi.approveTask).toHaveBeenCalledWith('task-1')
+    await waitFor(() => expect(tasksApi.approveTask).toHaveBeenCalledWith('task-1', expect.anything()))
   })
 
   it('calls dismissTask when Dismiss button clicked', async () => {
@@ -45,7 +45,7 @@ describe('TasksPage', () => {
     renderWithProviders(<TasksPage />)
     await waitFor(() => screen.getByText('Increase PostgreSQL connection pool size from 50 to 200'))
     fireEvent.click(screen.getByTitle(/dismiss/i))
-    expect(tasksApi.dismissTask).toHaveBeenCalledWith('task-1')
+    await waitFor(() => expect(tasksApi.dismissTask).toHaveBeenCalledWith('task-1', expect.anything()))
   })
 
   it('shows empty state when no tasks', async () => {
