@@ -1,7 +1,7 @@
 # tests/api/test_m6_errors.py
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+import uuid
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -10,7 +10,6 @@ from httpx import ASGITransport, AsyncClient
 
 def _make_error_app() -> FastAPI:
     from api.errors import (
-        apply_auth,
         http_exception_handler,
         set_request_id,
         unhandled_exception_handler,
@@ -22,7 +21,6 @@ def _make_error_app() -> FastAPI:
 
     @app.middleware("http")
     async def _set_rid(request, call_next):
-        import uuid
         set_request_id(str(uuid.uuid4()))
         return await call_next(request)
 
