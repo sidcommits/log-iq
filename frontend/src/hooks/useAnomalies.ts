@@ -12,7 +12,7 @@ export function useAnomalies(filters: AnomalyFilters = {}) {
 export function useReviewAnomaly() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: reviewAnomaly,
+    mutationFn: (id: string) => reviewAnomaly(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['anomalies'] }),
   })
 }
