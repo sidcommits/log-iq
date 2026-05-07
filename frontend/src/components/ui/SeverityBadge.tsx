@@ -1,4 +1,5 @@
-import { SEVERITY_COLORS, type Severity } from '../../lib/constants'
+import type { Severity } from '../../api/types'
+import { SEVERITY_COLORS } from '../../lib/constants'
 
 export function SeverityBadge({ severity }: { severity: Severity }) {
   const c = SEVERITY_COLORS[severity] ?? SEVERITY_COLORS.UNKNOWN

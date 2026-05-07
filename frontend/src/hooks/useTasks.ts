@@ -27,7 +27,10 @@ export function useApproveTask(filters: TaskFilters = {}) {
       queryClient.setQueryData(['tasks', filters], context?.previous)
       toast.error('Failed to approve task')
     },
-    onSuccess: () => toast.success('Task approved'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      toast.success('Task approved')
+    },
   })
 }
 
@@ -47,6 +50,9 @@ export function useDismissTask(filters: TaskFilters = {}) {
       queryClient.setQueryData(['tasks', filters], context?.previous)
       toast.error('Failed to dismiss task')
     },
-    onSuccess: () => toast.success('Task dismissed'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      toast.success('Task dismissed')
+    },
   })
 }

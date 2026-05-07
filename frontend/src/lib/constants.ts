@@ -1,7 +1,11 @@
 // frontend/src/lib/constants.ts
+import type { Severity } from '../api/types'
+
+export { type Severity }
+
 export const POLL_INTERVAL_MS = 5_000
 
-export const SEVERITY_COLORS = {
+export const SEVERITY_COLORS: Record<Severity, { bg: string; border: string; text: string }> = {
   ERROR: {
     bg: 'var(--red-dim)',
     border: 'var(--red)',
@@ -32,6 +36,4 @@ export const SEVERITY_COLORS = {
     border: 'var(--text-muted)',
     text: 'var(--text-muted)',
   },
-} as const
-
-export type Severity = keyof typeof SEVERITY_COLORS
+}
