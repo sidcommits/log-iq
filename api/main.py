@@ -5,17 +5,25 @@ from pathlib import Path
 
 import yaml
 from anthropic import AsyncAnthropic
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from openai import AsyncOpenAI
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from api.errors import (
+    apply_auth,
+    http_exception_handler,
+    set_request_id,
+    unhandled_exception_handler,
+)
+from api.routes.agents import router as agents_router
 from api.routes.analyze import router as analyze_router
 from api.routes.anomalies import router as anomalies_router
 from api.routes.correlate import router as correlate_router
 from api.routes.health import router as health_router
 from api.routes.search import router as search_router
+from api.routes.sources import router as sources_router
 from api.routes.tasks import router as tasks_router
 from db.postgres import init_pool
 from db.qdrant import ensure_collection, init_qdrant
@@ -63,11 +71,28 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="LogIQ", version="0.1.0", lifespan=lifespan)
 
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(Exception, unhandled_exception_handler)
+
+# Middleware ordering: Starlette prepends each add_middleware call, so the LAST
+# registered middleware is the OUTERMOST (executes first). We want:
+#   CORSMiddleware (outermost) → add_request_id → auth_middleware → route
+# So: auth registered 1st (inner), add_request_id 2nd (outer), CORS 3rd (outermost).
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next) -> Response:
+    err = await apply_auth(request, _config)
+    if err:
+        return err
+    return await call_next(request)
+
 
 @app.middleware("http")
 async def add_request_id(request: Request, call_next) -> Response:
+    rid = str(uuid.uuid4())
+    set_request_id(rid)
     response = await call_next(request)
-    response.headers["X-Request-ID"] = str(uuid.uuid4())
+    response.headers["X-Request-ID"] = rid
     return response
 
 
@@ -79,9 +104,12 @@ app.add_middleware(
 )
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
 app.include_router(health_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(analyze_router, prefix="/api")
 app.include_router(correlate_router, prefix="/api")
 app.include_router(anomalies_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")
+app.include_router(sources_router, prefix="/api")
+app.include_router(agents_router, prefix="/api")
