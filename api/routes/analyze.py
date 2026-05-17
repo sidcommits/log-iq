@@ -37,7 +37,7 @@ async def analyze_log(body: AnalyzeRequest, request: Request) -> AnalyzeResponse
         raise HTTPException(status_code=404, detail=str(exc))
 
     try:
-        rca = await run_rca(context, request.app.state.anthropic_client, cfg["rca"])
+        rca = await run_rca(context, request.app.state.llm_client, cfg["rca"])
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 

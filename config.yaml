@@ -19,9 +19,7 @@ embeddings:
   api_key: ${OPENAI_API_KEY}
 
 llm:
-  provider: claude          # claude | openai | openrouter
-  model: claude-sonnet-4-20250514
-  api_key: ${ANTHROPIC_API_KEY}
+  provider: openrouter      # claude | openai | openrouter
   timeout_seconds: 30
   openrouter:
     api_key: ${OPENROUTER_API_KEY}
