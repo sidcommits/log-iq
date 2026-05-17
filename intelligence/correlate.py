@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import asyncio
-
-from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 from qdrant_client import AsyncQdrantClient
 
 from db.postgres import get_logs_by_trace_id, get_rca_by_log_ids
+from intelligence.llm import LLMClient
 from models.log_event import LogEvent
 from models.rca import RootCauseAnalysis
 
@@ -24,7 +22,7 @@ async def correlate_trace(
     pool,
     openai_client: AsyncOpenAI,
     qdrant_client: AsyncQdrantClient,
-    anthropic_client: AsyncAnthropic,
+    llm_client: LLMClient,
     config: dict,
 ) -> CorrelateResponse:
     max_logs = config.get("correlate", {}).get("max_trace_logs", 200)
@@ -52,18 +50,11 @@ async def correlate_trace(
             f"{services_text}"
         )
         rca_cfg = config.get("rca", {})
-        try:
-            response = await asyncio.wait_for(
-                anthropic_client.messages.create(
-                    model=rca_cfg.get("model", "claude-sonnet-4-20250514"),
-                    max_tokens=1024,
-                    messages=[{"role": "user", "content": prompt}],
-                ),
-                timeout=rca_cfg.get("timeout_seconds", 30),
-            )
-            trace_summary = response.content[0].text
-        except (asyncio.TimeoutError, TimeoutError):
-            raise RuntimeError("Trace analysis timed out")
+        trace_summary = await llm_client.complete(
+            prompt=prompt,
+            max_tokens=1024,
+            timeout=rca_cfg.get("timeout_seconds", 30),
+        )
 
     return CorrelateResponse(
         logs_by_service=logs_by_service,

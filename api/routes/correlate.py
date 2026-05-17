@@ -21,7 +21,7 @@ async def correlate(
             pool=request.app.state.db_pool,
             openai_client=request.app.state.openai_client,
             qdrant_client=request.app.state.qdrant_client,
-            anthropic_client=request.app.state.anthropic_client,
+            llm_client=request.app.state.llm_client,
             config=request.app.state.config,
         )
     except ValueError as exc:

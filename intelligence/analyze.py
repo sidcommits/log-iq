@@ -1,11 +1,9 @@
 # intelligence/analyze.py
 from __future__ import annotations
 
-import asyncio
 import json
 import re
 
-from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 from qdrant_client import AsyncQdrantClient
@@ -13,6 +11,7 @@ from qdrant_client import AsyncQdrantClient
 from db.postgres import fetch_logs_by_ids, get_logs_by_trace_id, insert_task
 from db.qdrant import search_vectors
 from ingestion.pipeline import embed_texts
+from intelligence.llm import LLMClient
 from models.log_event import LogEvent
 from models.rca import RootCauseAnalysis
 from models.task import ActionableTask, TaskPriority
@@ -81,23 +80,15 @@ async def build_rca_context(
 
 async def run_rca(
     context: RCAContext,
-    anthropic_client: AsyncAnthropic,
+    llm_client: LLMClient,
     config: dict,
 ) -> RootCauseAnalysis:
     prompt = _build_prompt(context)
-    try:
-        response = await asyncio.wait_for(
-            anthropic_client.messages.create(
-                model=config.get("model", "claude-sonnet-4-20250514"),
-                max_tokens=2048,
-                messages=[{"role": "user", "content": prompt}],
-            ),
-            timeout=config.get("timeout_seconds", 30),
-        )
-    except (asyncio.TimeoutError, TimeoutError):
-        raise RuntimeError("RCA timed out")
-
-    text = response.content[0].text
+    text = await llm_client.complete(
+        prompt=prompt,
+        max_tokens=2048,
+        timeout=config.get("timeout_seconds", 30),
+    )
     try:
         data = json.loads(text)
     except json.JSONDecodeError:

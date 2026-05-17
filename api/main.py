@@ -1,10 +1,10 @@
 # api/main.py
+import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import yaml
-from anthropic import AsyncAnthropic
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,10 +30,13 @@ from api.routes.tasks import router as tasks_router
 from db.postgres import init_pool
 from db.qdrant import ensure_collection, init_qdrant
 from ingestion.pipeline import IngestionWorker
+from intelligence.llm import build_llm_client
 from sync.engine import SyncEngine
 
 _config: dict = yaml.safe_load(
-    (Path(__file__).parent.parent / "config.yaml").read_text()
+    os.path.expandvars(
+        (Path(__file__).parent.parent / "config.yaml").read_text()
+    )
 )
 
 
@@ -49,7 +52,7 @@ async def lifespan(app: FastAPI):
     await ensure_collection(app.state.qdrant_client, qdrant_cfg.get("collection", "log_events"))
 
     app.state.openai_client = AsyncOpenAI()
-    app.state.anthropic_client = AsyncAnthropic()
+    app.state.llm_client = build_llm_client(_config["llm"])
 
     engine = SyncEngine(config=_config, pool=app.state.db_pool)
     await engine.start()
