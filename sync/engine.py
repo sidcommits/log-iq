@@ -92,6 +92,7 @@ class SourceWorker:
                 self._advance_backoff()
 
     async def _stream_once(self) -> None:
+        source = self._adapter.get_source_name()
         buffer: list[LogEvent] = []
         aiter = self._adapter.stream_logs().__aiter__()
         while True:
@@ -103,15 +104,18 @@ class SourceWorker:
                 if len(buffer) >= self._stream_batch_size:
                     await db.insert_logs(self._pool, buffer)
                     buffer.clear()
+                    await db.upsert_cursor(self._pool, source, datetime.now(tz=timezone.utc))
             except asyncio.CancelledError:
                 raise
             except asyncio.TimeoutError:
                 if buffer:
                     await db.insert_logs(self._pool, buffer)
                     buffer.clear()
+                await db.upsert_cursor(self._pool, source, datetime.now(tz=timezone.utc))
             except StopAsyncIteration:
                 if buffer:
                     await db.insert_logs(self._pool, buffer)
+                await db.upsert_cursor(self._pool, source, datetime.now(tz=timezone.utc))
                 return
 
     # ── backoff ───────────────────────────────────────────────────────────────
