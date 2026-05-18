@@ -27,7 +27,7 @@ export function HealthPage() {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px', marginBottom: '24px' }}>
-          {data?.dependencies.map((dep) => <DependencyCard key={dep.name} dep={dep} />)}
+          {data?.dependencies?.map((dep) => <DependencyCard key={dep.name} dep={dep} />)}
         </div>
       )}
 
@@ -57,7 +57,7 @@ export function HealthPage() {
         <tbody>
           {isLoading ? (
             <tr><td colSpan={5} style={{ padding: '20px 14px', color: 'var(--text-muted)', fontSize: '13px' }}>Loading...</td></tr>
-          ) : data?.sync_sources.map((src) => (
+          ) : data?.sync_sources?.map((src) => (
             <SyncRow key={src.source_name} src={src} />
           ))}
         </tbody>

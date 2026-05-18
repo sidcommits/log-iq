@@ -25,11 +25,11 @@ export function AnomaliesPage() {
 
       {isLoading && <SkeletonTable />}
 
-      {!isLoading && data?.total === 0 && (
+      {!isLoading && data && (data.anomalies?.length ?? 0) === 0 && (
         <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-muted)' }}>No anomalies matching current filter</div>
       )}
 
-      {!isLoading && data && data.total > 0 && (
+      {!isLoading && data && (data.anomalies?.length ?? 0) > 0 && (
         <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid var(--border)' }}>
           <thead>
             <tr>
@@ -39,7 +39,7 @@ export function AnomaliesPage() {
             </tr>
           </thead>
           <tbody>
-            {data.anomalies.map((anomaly) => (
+            {data.anomalies?.map((anomaly) => (
               <AnomalyRow
                 key={anomaly.id}
                 anomaly={anomaly}
@@ -57,6 +57,7 @@ export function AnomaliesPage() {
 
 function AnomalyRow({ anomaly, expanded, onToggle, onReview }: { anomaly: AnomalyResult; expanded: boolean; onToggle: () => void; onReview: () => void }) {
   const { log, score, reviewed } = anomaly
+  if (!log) return null
   return (
     <>
       <tr onClick={onToggle} style={{ cursor: 'pointer' }}>

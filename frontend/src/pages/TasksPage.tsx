@@ -4,10 +4,11 @@ import { ErrorState } from '../components/ui/ErrorState'
 import type { ActionableTask, TaskStatus } from '../api/types'
 
 const STATUS_TABS: { label: string; value: TaskStatus }[] = [
-  { label: 'Pending', value: 'pending' },
+  { label: 'Pending',     value: 'pending' },
+  { label: 'Approved',    value: 'approved' },
   { label: 'In Progress', value: 'in_progress' },
-  { label: 'Resolved', value: 'resolved' },
-  { label: 'Dismissed', value: 'dismissed' },
+  { label: 'Resolved',    value: 'resolved' },
+  { label: 'Dismissed',   value: 'dismissed' },
 ]
 
 const PRIORITY_COLORS: Record<string, { bg: string; border: string; text: string }> = {
@@ -64,7 +65,7 @@ function TaskCard({ task, onApprove, onDismiss }: { task: ActionableTask; onAppr
         {task.priority}
       </span>
       <div>
-        <div style={{ fontFamily: 'var(--font-head)', fontSize: '12px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '4px' }}>{task.type.replace('_', ' ')}</div>
+        <div style={{ fontFamily: 'var(--font-head)', fontSize: '12px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '4px' }}>{(task.type ?? '').replace(/_/g, ' ')}</div>
         <div style={{ fontSize: '15px', color: 'var(--text-primary)', marginBottom: '6px', lineHeight: 1.4 }}>{task.description}</div>
         <div style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', gap: '14px' }}>
           <span>Service: <strong style={{ color: 'var(--text-secondary)' }}>{task.target_service}</strong></span>
