@@ -19,9 +19,9 @@ export function StatusPanel() {
         <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Connecting...</div>
       ) : (
         <>
-          <StatusRow label="Events" value={data.metrics.total_logs.toLocaleString()} highlight />
+          <StatusRow label="Events" value={data?.metrics?.total_logs?.toLocaleString() ?? '—'} highlight />
           <StatusRow label="Last sync" value={firstSource?.last_synced_at ? formatAgo(firstSource.last_synced_at) : '—'} />
-          <StatusRow label="Mode" value={firstSource?.mode.toUpperCase() ?? '—'} />
+          <StatusRow label="Mode" value={firstSource?.mode?.toUpperCase() ?? '—'} />
           <StatusRow label="Lag" value={firstSource?.lag_ms != null ? `${firstSource.lag_ms}ms` : '—'} />
         </>
       )}

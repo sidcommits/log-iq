@@ -22,6 +22,7 @@ async def search_logs(body: SearchRequest, request: Request) -> SearchResponse:
     if not body.query.strip():
         raise HTTPException(status_code=422, detail="query must not be empty")
     try:
+        cfg = request.app.state.config
         result = await asyncio.wait_for(
             semantic_search(
                 query=body.query,
@@ -30,6 +31,7 @@ async def search_logs(body: SearchRequest, request: Request) -> SearchResponse:
                 pool=request.app.state.db_pool,
                 openai_client=request.app.state.openai_client,
                 qdrant_client=request.app.state.qdrant_client,
+                collection=cfg["qdrant"].get("collection", "log_events"),
             ),
             timeout=30.0,
         )

@@ -34,8 +34,17 @@ def _row_to_log_event(row) -> LogEvent:
     )
 
 
+async def _init_conn(conn: asyncpg.Connection) -> None:
+    await conn.set_type_codec(
+        "jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
+    )
+    await conn.set_type_codec(
+        "json", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
+    )
+
+
 async def init_pool(dsn: str) -> asyncpg.Pool:
-    pool = await asyncpg.create_pool(dsn)
+    pool = await asyncpg.create_pool(dsn, init=_init_conn)
     async with pool.acquire() as conn:
         await conn.execute(_MIGRATION_SQL)
     return pool
@@ -282,6 +291,21 @@ async def update_task_status(
 # ---------------------------------------------------------------------------
 
 def _row_to_anomaly(row) -> AnomalyResult:
+    log = None
+    if row.get("l_service") is not None:
+        log = LogEvent(
+            id=row["l_id"],
+            timestamp=row["l_timestamp"],
+            severity=SeverityLevel(row["l_severity"]),
+            service=row["l_service"],
+            environment=row["l_environment"],
+            trace_id=row["l_trace_id"],
+            span_id=row["l_span_id"],
+            message=row["l_message"],
+            metadata=row["l_metadata"] or {},
+            raw=row["l_raw"] or {},
+            source=row["l_source"],
+        )
     return AnomalyResult(
         id=row["id"],
         log_id=row["log_id"],
@@ -290,6 +314,7 @@ def _row_to_anomaly(row) -> AnomalyResult:
         threshold=row["threshold"],
         reviewed=row["reviewed"],
         detected_at=row["detected_at"],
+        log=log,
     )
 
 
@@ -321,15 +346,32 @@ async def get_anomalies(
     if is_anomaly is not None:
         params.append(is_anomaly)
         conditions.append(f"is_anomaly = ${len(params)}")
-    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    where = ("WHERE " + " AND ".join(f"a.{c}" for c in conditions)) if conditions else ""
     count_params = params[:]
     params += [limit, offset]
+    join_query = f"""
+        SELECT
+            a.id, a.log_id, a.score, a.is_anomaly, a.threshold, a.reviewed, a.detected_at,
+            l.id        AS l_id,
+            l.timestamp AS l_timestamp,
+            l.severity  AS l_severity,
+            l.service   AS l_service,
+            l.environment AS l_environment,
+            l.trace_id  AS l_trace_id,
+            l.span_id   AS l_span_id,
+            l.message   AS l_message,
+            l.metadata  AS l_metadata,
+            l.raw       AS l_raw,
+            l.source    AS l_source
+        FROM anomalies a
+        LEFT JOIN logs l ON l.id = a.log_id
+        {where}
+        ORDER BY a.detected_at DESC
+        LIMIT ${len(params) - 1} OFFSET ${len(params)}
+    """
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            f"SELECT * FROM anomalies {where} ORDER BY detected_at DESC LIMIT ${len(params) - 1} OFFSET ${len(params)}",
-            *params,
-        )
-        total = await conn.fetchval(f"SELECT COUNT(*) FROM anomalies {where}", *count_params)
+        rows = await conn.fetch(join_query, *params)
+        total = await conn.fetchval(f"SELECT COUNT(*) FROM anomalies a {where}", *count_params)
     return [_row_to_anomaly(row) for row in rows], (total or 0)
 
 

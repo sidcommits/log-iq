@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from models._validators import validate_aware_datetime
+from models.log_event import LogEvent
 
 
 class AnomalyResult(BaseModel):
@@ -16,6 +17,7 @@ class AnomalyResult(BaseModel):
     threshold: float = Field(ge=0.0, le=1.0)
     reviewed: bool = False
     detected_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    log: LogEvent | None = None
 
     @field_validator("detected_at")
     @classmethod

@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 class AnalyzeRequest(BaseModel):
-    log_id: str
+    log_ids: list[str]
     create_tasks: bool = True
 
 
@@ -23,10 +23,12 @@ class AnalyzeResponse(BaseModel):
 
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze_log(body: AnalyzeRequest, request: Request) -> AnalyzeResponse:
+    if not body.log_ids:
+        raise HTTPException(status_code=422, detail="log_ids must not be empty")
     cfg = request.app.state.config
     try:
         context = await build_rca_context(
-            log_id=body.log_id,
+            log_id=body.log_ids[0],
             pool=request.app.state.db_pool,
             openai_client=request.app.state.openai_client,
             qdrant_client=request.app.state.qdrant_client,
@@ -43,7 +45,7 @@ async def analyze_log(body: AnalyzeRequest, request: Request) -> AnalyzeResponse
 
     await insert_rca(request.app.state.db_pool, rca)
     await append_audit_log(
-        request.app.state.db_pool, "rca_created", {"rca_id": rca.id, "log_id": body.log_id}
+        request.app.state.db_pool, "rca_created", {"rca_id": rca.id, "log_ids": body.log_ids}
     )
 
     tasks: list[ActionableTask] = []

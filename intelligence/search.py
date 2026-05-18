@@ -71,10 +71,12 @@ async def semantic_search(
         qdrant_client, query_vector, qdrant_filter, limit=limit, collection=collection
     )
 
-    if not hits or hits[0][1] < _FALLBACK_THRESHOLD:
+    if not hits:
         events = await fetch_logs_by_text(pool, query, limit)
         results = [SearchResult(log=e, score=0.0) for e in events]
         return SearchResponse(results=results, total=len(results), fallback_used=True)
+
+    fallback_used = hits[0][1] < _FALLBACK_THRESHOLD
 
     # Dedup by log_id — multiple chunks may match; keep highest score
     seen: dict[str, float] = {}
@@ -95,4 +97,4 @@ async def semantic_search(
         reverse=True,
     )
 
-    return SearchResponse(results=results[:limit], total=len(results), fallback_used=False)
+    return SearchResponse(results=results[:limit], total=len(results), fallback_used=fallback_used)
