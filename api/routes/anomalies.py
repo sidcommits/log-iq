@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 class AnomaliesResponse(BaseModel):
-    results: list[AnomalyResult]
+    anomalies: list[AnomalyResult]
     total: int
 
 
@@ -34,7 +34,7 @@ async def list_anomalies(
         limit=min(limit, 200),
         offset=offset,
     )
-    return AnomaliesResponse(results=results, total=total)
+    return AnomaliesResponse(anomalies=results, total=total)
 
 
 @router.post("/anomalies/{anomaly_id}/review", response_model=ReviewResponse)

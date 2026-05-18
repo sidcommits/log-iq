@@ -13,7 +13,7 @@ _DISMISSABLE_STATUSES = {TaskStatus.PENDING, TaskStatus.APPROVED}
 
 
 class TasksResponse(BaseModel):
-    results: list[ActionableTask]
+    tasks: list[ActionableTask]
     total: int
 
 
@@ -36,7 +36,7 @@ async def list_tasks(
         limit=min(limit, 200),
         offset=offset,
     )
-    return TasksResponse(results=results, total=total)
+    return TasksResponse(tasks=results, total=total)
 
 
 @router.post("/tasks/{task_id}/approve", response_model=TaskResponse)
