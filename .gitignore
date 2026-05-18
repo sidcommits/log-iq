@@ -29,3 +29,7 @@ frontend/dist/
 .idea/
 .vscode/
 *.swp
+
+# Planning / AI tooling
+.planning/
+.claude/
